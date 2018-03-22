@@ -1,54 +1,52 @@
-const fs = require('fs');
 const express = require('express');
-const request = require('request');
+const scraper = require('website-scraper');
+const { initDB, updateWebCache } = require('./webCache');
 
 const app = express();
-const PORT = 8080;
-
-const findAll = (subs, str) => {
-	let prev = 0
-	let indexes = []
-
-	while (true) {
-		let r = str.indexOf(subs)
-		if (r === -1) {
-			return indexes
-		}
-
-		indexes.push(r + prev)
-		prev = r + prev + 1
-		str = str.slice(r + 1)
-	}
-}
+const PORT = process.env.SERVER_PORT || 8080;
 
 app.get('/query', (req, res) => {
+
+	res.setHeader('Content-Type', 'application/json');
+
 	let sub = req.query.sub;
 	let url = req.query.url;
 
 	if (sub == undefined || url === undefined) {
-		res.setHeader('Content-Type', 'application/json');
 		res.status(400);
 		res.send('Params required');
+		return;
 	}
 
-	request(url, (err, response, html) => {
-		if (!err) {
-			let occurences = [];
-			occurences = findAll(sub, html);
-			if (occurences.length !== 0) {
-				let arr = {};
-				occurences.map((occ, i) => {
-					arr[i] = "... " + html.substring(occ - sub.length, occ + (2 * sub.length)) + " ...";
-					console.log("... " + html.substring(occ - sub.length, occ + (2 * sub.length)) + " ...");
-				})
-				res.setHeader('Content-Type', 'application/json');
-				res.status(200);
-				res.send(JSON.stringify(arr));
-			} else
-				console.log("No substring found");
-		}
+});
+
+app.get('/scrape', (req, res) => {
+	let options = {
+		urls: ['https://publicwww.com/'],
+		directory: `./scraped ${Math.random() * 100}`,
+	}
+
+	scraper(options).then((result) => {
+		// res.setHeader('Content-Type', 'application/json');
+		console.log(result[0].text);
+		res.send(result);
+	}).catch((err) => {
+		res.send(err);
 	});
+
+});
+
+app.get('/init', async (req, res) => {
+	try {
+		let lines = await initDB('./shopifyWebsites.txt');
+		console.log(lines);
+		res.setHeader('Content-Type', 'application/json');
+		res.status(200);
+		res.send({ lines });
+	} catch (err) {
+		console.log(err.stack);
+	}
 });
 
 app.listen(PORT);
-console.log('http://localhost:' + PORT + '/query?sub=jquery&url=https://paratise.development.tamismart.com/');
+console.log(`Started server: http://localhost:${PORT}`);
