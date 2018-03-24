@@ -1,20 +1,20 @@
+const path = require('path');
 const fs = require('fs');
-const fetch = require("node-fetch");
+const fetch = require('node-fetch');
 const mongo = require('mongodb').MongoClient;
-require('dotenv').config()
+const { mongoUri } = require('../config/db');
+const _cliProgress = require('cli-progress');
 
-const url = `mongodb://${process.env.DB_USER}:${process.env.DB_PASS}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.AUTH_DB}`;
 
 //Initialize and load sample websites list into database
-const initDB = async (file) => {
+const resetDB = async () => {
 	try {
-		let client = await mongo.connect(url);
+		let client = await mongo.connect(mongoUri);
 		console.log("Connected to database");
 		const sites = client.db('webparser').collection('sites');
 
 		sites.drop((err, res) => {
-			if (err) console.log(err);
-			console.log('Resetting Database');
+			err ? console.log('No collection to drop') : console.log('Resetting Database');
 		});
 
 		// creates unique index in url field
@@ -28,6 +28,18 @@ const initDB = async (file) => {
 			if (err) console.log(err);
 			// console.log(result);
 		});
+		client.close();
+		return;
+	} catch (err) {
+		console.log(err.stack);
+	}
+}
+const loadWebsitesFromFile = async (file) => {
+	try {
+		let client = await mongo.connect(mongoUri);
+		file = path.basename(`${file}`);
+		console.log("Connected to database");
+		const sites = client.db('webparser').collection('sites');
 
 		let readStream = fs.createReadStream(file, 'utf-8');
 		let data;
@@ -55,10 +67,10 @@ const initDB = async (file) => {
 			try {
 				let res = await sites.insertMany(inSites, { ordered: false });
 				console.log(`Lines inserted : ${res.insertedCount}`);
-				return res.insertedCount;
 				client.close();
 			} catch (err) {
-				console.log(err.stack);
+				console.log("Duplicate will be ignored");
+				client.close();
 			}
 		});
 	} catch (err) {
@@ -78,32 +90,43 @@ const fetchSourceCode = async (url) => {
 //update Websites Source Code in the Database
 const updateWebCache = async () => {
 	try {
-		let client = await mongo.connect(url);
+		let client = await mongo.connect(mongoUri);
 		console.log("Connected to database");
 		const sites = client.db('webparser').collection('sites');
 		let data = await sites.find({}).toArray();
 
 		let batch = sites.initializeUnorderedBulkOp();
 		let nCached = 0;
+		const cacheProgress = new _cliProgress.Bar({
+			format: 'progress [{bar}] {percentage}% | {value}/{total}'
+		}, _cliProgress.Presets.shades_classic);
+		console.log(`Started Caching`);
+		cacheProgress.start(data.length, 0);
 
-		console.log(`Caching in progress`);
-		data.map(async (site, n) => {
+		let errors = [];
+		data.map(async (site) => {
 			try {
 				let content = await fetchSourceCode(site.url);
 				batch.find({ "url": site.url }).updateOne({ $set: { content } })
-				console.log("Caching Website n° " + n);
-
 			} catch (err) {
-				console.log("Errror caching : " + site.url);
+				errors.push(site.url);
 			} finally {
 				nCached++;
+				cacheProgress.update(nCached);
 				if (nCached === data.length) {
 					batch.execute((err, res) => {
 						if (err) console.log(err);
-						console.log(`${res.nModified || 0} websites cached`);
+						console.log(`\nCached ${res.nModified || 0} websites`);
+						cacheProgress.stop();
+						if (errors.length !== 0) {
+							console.log('Errror caching : ');
+							console.log(errors);
+						}
+						console.log("Finished Caching");
+						// console.log(`Scraper will fire in ${}`);
 					});
+					client.close();
 				}
-				client.close();
 			}
 		});
 	} catch (err) {
@@ -111,58 +134,31 @@ const updateWebCache = async () => {
 	}
 }
 
-//Find all occurence of a substring in a string
-const findAll = (subs, str) => {
-	let prev = 0
-	let indexes = []
 
-	while (true) {
-		let r = str.indexOf(subs)
-		if (r === -1) {
-			return indexes
-		}
+//convert seconds to Week, days, hours, minutes and secondes
+const compoundDuration = (labels, intSeconds) =>
+	weekParts(intSeconds)
+		.map((v, i) => [v, labels[i]])
+		.reduce((a, x) =>
+			a.concat(x[0] ? [`${x[0]} ${x[1] || '?'}`] : []), []
+		)
+		.join(', '),
+	weekParts = intSeconds => [0, 7, 24, 60, 60]
+		.reduceRight((a, x) => {
+			let r = a.rem,
+				mod = x !== 0 ? r % x : r;
 
-		indexes.push(r + prev)
-		prev = r + prev + 1
-		str = str.slice(r + 1)
-	}
-}
+			return {
+				rem: (r - mod) / (x || 1),
+				parts: [mod].concat(a.parts)
+			};
+		}, {
+				rem: intSeconds,
+				parts: []
+			})
+		.parts;
 
-//remove duplicate from an array
-const removeDuplicate = (inArr) => {
-	return inArr.filter((elem, pos, arr) => {
-		return arr.indexOf(elem) == pos;
-	});
-}
 
-//Query search string from cached websites source code in the databae
-const queryWebsite = async (keyword) => {
-	try {
-		keyword = keyword || "fuck";
-		let client = await mongo.connect(url);
-		console.log("Connected to database");
-		const sites = client.db('webparser').collection('sites');
-		let data = await sites.find({ '$text': { '$search': keyword } }).toArray();
+const formatSec = (sec) => compoundDuration(["week", "day", "h", "m", "s"], sec / 1000);
 
-		let indexes = data.map((site, i) => {
-			let occurences = findAll(keyword, site.content);
-			if (occurences.length !== 0) {
-				const obj = {};
-				obj[site.name] = occurences.map((occ, i) => {
-					return "..." + site.content.substring(occ - 20, occ + (2 * 20)) + "...";
-				})
-				return obj;
-			}
-		});
-		client.close();
-		console.log(indexes);
-		return indexes;
-
-	} catch (err) {
-		console.log(err.stack);
-	}
-}
-
-module.exports = { initDB, updateWebCache, queryWebsite, fetchSourceCode };
-
-initDB('./shopifyWebsites.txt');
+module.exports = { resetDB, loadWebsitesFromFile, updateWebCache, formatSec }

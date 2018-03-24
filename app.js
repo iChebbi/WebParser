@@ -1,24 +1,13 @@
+#!/usr/bin/env nodejs
+
 const express = require('express');
+const WebQuery = require('./WebQuery/index');
 const scraper = require('website-scraper');
-const { initDB, updateWebCache } = require('./webCache');
 
 const app = express();
 const PORT = process.env.SERVER_PORT || 8080;
 
-app.get('/query', (req, res) => {
-
-	res.setHeader('Content-Type', 'application/json');
-
-	let sub = req.query.sub;
-	let url = req.query.url;
-
-	if (sub == undefined || url === undefined) {
-		res.status(400);
-		res.send('Params required');
-		return;
-	}
-
-});
+app.use('/query', WebQuery);
 
 app.get('/scrape', (req, res) => {
 	let options = {
@@ -34,18 +23,6 @@ app.get('/scrape', (req, res) => {
 		res.send(err);
 	});
 
-});
-
-app.get('/init', async (req, res) => {
-	try {
-		let lines = await initDB('./shopifyWebsites.txt');
-		console.log(lines);
-		res.setHeader('Content-Type', 'application/json');
-		res.status(200);
-		res.send({ lines });
-	} catch (err) {
-		console.log(err.stack);
-	}
 });
 
 app.listen(PORT);
