@@ -26,7 +26,7 @@ const removeDuplicate = (inArr) => {
 }
 
 //Query search string from cached websites source code in the databae
-const queryWebsite = async (keyword) => {
+const queryWebsite = async (keyword, contentType) => {
 	try {
 		let client = await mongo.connect(mongoUri);
 		console.log("Connected to database");

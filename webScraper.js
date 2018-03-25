@@ -1,8 +1,8 @@
 #!/usr/bin/env nodejs
 
-const { resetDB, loadWebsitesFromFile, updateWebCache, formatSec } = require('./WebScraper/helpers');
+const { resetDB, loadWebsitesFromFile, updateWebCache, formatSec, printMan } = require('./WebScraper/helpers');
 
-if (process.argv.length < 3) {
+if (process.argv.length < 3 || ( (process.argv[2] !== '--scrape') && (process.argv[2] !== '--reset') && (process.argv[2] !== '--load'))) {
 	console.log("run WebScraper --load filePath: to load WebSites into Database");
 	console.log("run WebScraper --reset : to reset Database");
 	console.log("run WebScraper --scrape | [fetchInterval (sec) ] : to start Scraper");
@@ -22,7 +22,7 @@ if (process.argv[2] === '--reset') {
 	}
 } else if (process.argv[2] === '--scrape') {
 	if (process.argv[3] === '--once') {
-		console.log('runnig once');
+		console.log('Runnig Once');
 		updateWebCache();
 	} else {
 		const fetchInterval = parseInt(process.argv[3]) * 1000 || 604800 * 1000; //1 Week default

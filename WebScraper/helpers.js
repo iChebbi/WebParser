@@ -4,9 +4,37 @@ const fetch = require('node-fetch');
 const mongo = require('mongodb').MongoClient;
 const { mongoUri } = require('../config/db');
 const _cliProgress = require('cli-progress');
+const { promisify } = require('util');
+const rmdir = promisify(require('rimraf'));
+const scraper = require('website-scraper');
+
+//convert seconds to Week, days, hours, minutes and secondes
+const compoundDuration = (labels, intSeconds) =>
+	weekParts(intSeconds)
+		.map((v, i) => [v, labels[i]])
+		.reduce((a, x) =>
+			a.concat(x[0] ? [`${x[0]} ${x[1] || '?'}`] : []), []
+		)
+		.join(', '),
+	weekParts = intSeconds => [0, 7, 24, 60, 60]
+		.reduceRight((a, x) => {
+			let r = a.rem,
+				mod = x !== 0 ? r % x : r;
+
+			return {
+				rem: (r - mod) / (x || 1),
+				parts: [mod].concat(a.parts)
+			};
+		}, {
+				rem: intSeconds,
+				parts: []
+			})
+		.parts;
 
 
-//Initialize and load sample websites list into database
+const formatSec = (sec) => compoundDuration(["week", "day", "h", "m", "s"], sec / 1000);
+
+//Initialize database
 const resetDB = async () => {
 	try {
 		let client = await mongo.connect(mongoUri);
@@ -34,6 +62,8 @@ const resetDB = async () => {
 		console.log(err.stack);
 	}
 }
+
+//Load sample websites list into database
 const loadWebsitesFromFile = async (file) => {
 	try {
 		let client = await mongo.connect(mongoUri);
@@ -42,7 +72,7 @@ const loadWebsitesFromFile = async (file) => {
 		const sites = client.db('webparser').collection('sites');
 
 		let readStream = fs.createReadStream(file, 'utf-8');
-		let data;
+		let data = '';
 		readStream.on('data', (chunk) => {
 			data += chunk;
 		});
@@ -51,15 +81,12 @@ const loadWebsitesFromFile = async (file) => {
 		let inSites = [];
 		readStream.on('end', async () => {
 			data = data.split('\n');
-
 			data.forEach(url => {
 				name = url.split(".")[0];
-				(url.indexOf('http://') === -1) && (url = 'http://' + url);
-
+				(url.indexOf('http') === -1) && (url = 'http://' + url);
 				inSites.push({
 					"name": name,
-					"url": url,
-					"content": ""
+					"url": url
 				});
 			});
 
@@ -78,12 +105,60 @@ const loadWebsitesFromFile = async (file) => {
 	}
 }
 
+
+
 //fetch only homepage sourcode for NOW
 const fetchSourceCode = async (url) => {
 	try {
-		return await (await fetch(url)).text();
+		const options = {
+			urls: [url],
+			directory: `./cache`,
+			defaultFilename: 'index.html',
+			maxDepth: 1,
+			ignoreErrors: true,
+			sources: [
+				{ selector: 'img', attr: 'href' },
+				{ selector: 'link[rel="stylesheet"]', attr: 'href' },
+				{ selector: 'script', attr: 'src' }
+			],
+			subdirectories: [
+				{ directory: 'html', extensions: ['.html'] },
+				{ directory: 'js', extensions: ['.js'] },
+				{ directory: 'css', extensions: ['.css'] }
+			]
+		}
+
+		if (fs.existsSync('cache')) {
+			await rmdir('cache');
+		}
+
+		const result = await scraper(options);
+		const readfile = promisify(fs.readFile);
+
+		if (fs.existsSync('cache/html')) {
+			const htmlFiles = fs.readdirSync('cache/html/');
+			var htmlPromise = htmlFiles.reduce(async (html, file) => html + await readfile(`cache/html/${file}`, 'utf-8'), '');
+		}
+		if (fs.existsSync('cache/css')) {
+			const cssFiles = fs.readdirSync('cache/css/');
+			var cssPromise = cssFiles.reduce(async (css, file) => css + await readfile(`cache/css/${file}`, 'utf-8'), '');
+		}
+
+		if (fs.existsSync('cache/js')) {
+			const jsFiles = fs.readdirSync('cache/js/');
+			var jsPromise = jsFiles.reduce(async (js, file) => js + await readfile(`cache/js/${file}`, 'utf-8'), '');
+		}
+
+		const [html, css, js] = await Promise.all([htmlPromise, cssPromise, jsPromise]);
+		rmdir('cache');
+		return {
+			html: html,
+			css: css,
+			js: js
+		}
+
 	} catch (err) {
-		console.log("Error caching " + site.url);
+		console.log(err.stack);
 	}
 }
 
@@ -98,7 +173,7 @@ const updateWebCache = async () => {
 		let batch = sites.initializeUnorderedBulkOp();
 		let nCached = 0;
 		const cacheProgress = new _cliProgress.Bar({
-			format: 'progress [{bar}] {percentage}% | {value}/{total}'
+			format: 'progress [{bar}] {percentage} % | {value}/{total}'
 		}, _cliProgress.Presets.shades_classic);
 		console.log(`Started Caching`);
 		cacheProgress.start(data.length, 0);
@@ -106,9 +181,11 @@ const updateWebCache = async () => {
 		let errors = [];
 		data.map(async (site) => {
 			try {
-				let content = await fetchSourceCode(site.url);
-				batch.find({ "url": site.url }).updateOne({ $set: { content } })
+				const { html, css, js } = await fetchSourceCode(site.url);
+				// console.log("\ncss : " + css);
+				batch.find({ "url": site.url }).updateOne({ $set: { html, css, js } })
 			} catch (err) {
+				console.log(err);
 				errors.push(site.url);
 			} finally {
 				nCached++;
@@ -123,7 +200,6 @@ const updateWebCache = async () => {
 							console.log(errors);
 						}
 						console.log("Finished Caching");
-						// console.log(`Scraper will fire in ${}`);
 					});
 					client.close();
 				}
@@ -134,31 +210,8 @@ const updateWebCache = async () => {
 	}
 }
 
-
-//convert seconds to Week, days, hours, minutes and secondes
-const compoundDuration = (labels, intSeconds) =>
-	weekParts(intSeconds)
-		.map((v, i) => [v, labels[i]])
-		.reduce((a, x) =>
-			a.concat(x[0] ? [`${x[0]} ${x[1] || '?'}`] : []), []
-		)
-		.join(', '),
-	weekParts = intSeconds => [0, 7, 24, 60, 60]
-		.reduceRight((a, x) => {
-			let r = a.rem,
-				mod = x !== 0 ? r % x : r;
-
-			return {
-				rem: (r - mod) / (x || 1),
-				parts: [mod].concat(a.parts)
-			};
-		}, {
-				rem: intSeconds,
-				parts: []
-			})
-		.parts;
-
-
-const formatSec = (sec) => compoundDuration(["week", "day", "h", "m", "s"], sec / 1000);
+// (async () => {
+// 	console.log((await fetchSourceCode('https://publicwww.com/css/display/')).css);
+// })();
 
 module.exports = { resetDB, loadWebsitesFromFile, updateWebCache, formatSec }
