@@ -52,7 +52,7 @@ const resetDB = async () => {
 		});
 
 		//create text index on content field
-		sites.createIndex({ content: 'text', }, (err, result) => {
+		sites.createIndex({ html: 'text', css: 'text', js: 'text' }, (err, result) => {
 			if (err) console.log(err);
 			// console.log(result);
 		});
@@ -86,7 +86,10 @@ const loadWebsitesFromFile = async (file) => {
 				(url.indexOf('http') === -1) && (url = 'http://' + url);
 				inSites.push({
 					"name": name,
-					"url": url
+					"url": url,
+					"html": "",
+					"css": "",
+					"js": ""
 				});
 			});
 

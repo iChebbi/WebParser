@@ -38,7 +38,7 @@ const queryWebsite = async (keyword, contentType) => {
 		}
 
 		let indexes = data.map((site, i) => {
-			let occurences = findAll(keyword, site.content);
+			let occurences = findAll(keyword, site[`contentType`]);
 			if (occurences.length !== 0) {
 				const obj = {};
 				obj[site.url] = removeDuplicate(occurences.map((occ, i) => {
