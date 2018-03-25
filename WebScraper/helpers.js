@@ -83,7 +83,7 @@ const loadWebsitesFromFile = async (file) => {
 			data = data.split('\n');
 			data.forEach(url => {
 				name = url.split(".")[0];
-				(url.indexOf('http') === -1) && (url = 'http://' + url);
+				(url !== '' && url.indexOf('http') === -1) && (url = 'http://' + url);
 				inSites.push({
 					"name": name,
 					"url": url,

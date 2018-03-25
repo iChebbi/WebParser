@@ -22,7 +22,7 @@ if (process.argv[2] === '--reset') {
 	}
 } else if (process.argv[2] === '--scrape') {
 	if (process.argv[3] === '--once') {
-		console.log('Runnig Once');
+		console.log('Runnig once');
 		updateWebCache();
 	} else {
 		const fetchInterval = parseInt(process.argv[3]) * 1000 || 604800 * 1000; //1 Week default
