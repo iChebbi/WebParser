@@ -140,16 +140,16 @@ const fetchSourceCode = async (url) => {
 
 		if (fs.existsSync('cache/html')) {
 			const htmlFiles = fs.readdirSync('cache/html/');
-			var htmlPromise = htmlFiles.reduce(async (html, file) => html + await readfile(`cache/html/${file}`, 'utf-8'), '');
+			var htmlPromise = htmlFiles.reduce(async (html, file) => await html + await readfile(`cache/html/${file}`, 'utf-8'), '');
 		}
 		if (fs.existsSync('cache/css')) {
 			const cssFiles = fs.readdirSync('cache/css/');
-			var cssPromise = cssFiles.reduce(async (css, file) => css + await readfile(`cache/css/${file}`, 'utf-8'), '');
+			var cssPromise = cssFiles.reduce(async (css, file) => await css + await readfile(`cache/css/${file}`, 'utf-8'), '');
 		}
 
 		if (fs.existsSync('cache/js')) {
 			const jsFiles = fs.readdirSync('cache/js/');
-			var jsPromise = jsFiles.reduce(async (js, file) => js + await readfile(`cache/js/${file}`, 'utf-8'), '');
+			var jsPromise = jsFiles.reduce(async (js, file) => await js + await readfile(`cache/js/${file}`, 'utf-8'), '');
 		}
 
 		const [html, css, js] = await Promise.all([htmlPromise, cssPromise, jsPromise]);

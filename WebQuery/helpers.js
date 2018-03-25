@@ -29,27 +29,30 @@ const removeDuplicate = (inArr) => {
 const queryWebsite = async (keyword, contentType) => {
 	try {
 		let client = await mongo.connect(mongoUri);
-		console.log("Connected to database");
 		const sites = client.db('webparser').collection('sites');
-		let data = await sites.find({ '$text': { '$search': keyword } }).toArray();
+
+		let data = await sites.find({ '$text': { '$search': keyword } }).toArray(); //return all site including containing keyword (in html, css and js fields) using mongo built-in search features
+
 		if (data.length === 0) {
 			client.close();
 			return { "msg": "No result found" };
 		}
 
+		//Return query result 
 		let indexes = data.map((site, i) => {
-			let occurences = findAll(keyword, site[`contentType`]);
+			const content = site[`${contentType}`];
+			let occurences = findAll(keyword, content);
 			if (occurences.length !== 0) {
 				const obj = {};
 				obj[site.url] = removeDuplicate(occurences.map((occ, i) => {
-					return "..." + site.content.substring(occ - 20, occ + (2 * 20)) + "...";
+					return "..." + content.substring(occ - 20, occ + (2 * 20)) + "...";
 				}));
-				console.log(obj);
 				return obj;
-			}
+			};
 		});
 		client.close();
-		return indexes;
+		return indexes[0] !== undefined ? indexes : { "msg": "No result found" };
+
 	} catch (err) {
 		console.log(err.stack);
 	}
