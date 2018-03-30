@@ -35,7 +35,7 @@ const queryWebsite = async (keyword, contentType) => {
 
 		if (data.length === 0) {
 			client.close();
-			return { "msg": "No result found" };
+			return [{ "msg": "No result found" }];
 		}
 
 		//Return query result 
@@ -45,15 +45,19 @@ const queryWebsite = async (keyword, contentType) => {
 			let occurences = findAll(keyword, content);
 
 			if (occurences.length !== 0) {
-				const obj = {};
-				obj[site.url] = removeDuplicate(occurences.map((occ, i) => {
+				const obj = {
+					url: site.url
+				};
+				obj.data = removeDuplicate(occurences.map((occ, i) => {
 					return "..." + content.substring(occ - 20, occ + (2 * 20)) + "...";
 				}));
 				return obj;
 			};
 		});
 		client.close();
-		return indexes[0] !== undefined ? indexes : { "msg": "No result found" };
+		indexes = indexes.filter((i) => i !== undefined)
+
+		return indexes[0] !== undefined ? indexes : [{ "msg": "No result found" }];
 
 	} catch (err) {
 		console.log(err.stack);
