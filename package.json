@@ -19,6 +19,6 @@
     "node-fetch": "^2.1.1",
     "request": "^2.85.0",
     "rimraf": "^2.6.2",
-    "website-scraper": "^3.3.2"
+    "website-scraper": "^4.2.0"
   }
 }
